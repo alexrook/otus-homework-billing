@@ -39,11 +39,14 @@ object Boot {
       for {
         customersRegistryActor <- system.ask(Command.GetCustomerRegistry)
         tariffRegistryActor    <- system.ask(Command.GetTariffRegistry)
+        gaugeRegistryRootActor <- system.ask(Command.GetGaugeRegistryRoot)
+
         customersRoutes: CustomersRoutes = new CustomersRoutes(customersRegistryActor)(system)
         tariffRoutes = new TariffRoutes(tariffRegistryActor)
+        gaugeRoutes  = new GaugeRoutes(gaugeRegistryRootActor)
 
         routes: Route = handleExceptions(myExceptionHandler) {
-          customersRoutes.routes ~ tariffRoutes.routes
+          customersRoutes.routes ~ tariffRoutes.routes ~ gaugeRoutes.routes
         }
 
         server <- Http().newServerAt("localhost", 8080).bind(routes)

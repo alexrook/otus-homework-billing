@@ -1,7 +1,7 @@
 package homework
 
 import akka.actor.typed.scaladsl.AskPattern._
-import akka.actor.typed.{ActorRef, ActorSystem}
+import akka.actor.typed.{ ActorRef, ActorSystem }
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
@@ -12,9 +12,8 @@ import homework.CustomerRegistry.Event
 import java.util.UUID
 import scala.concurrent.Future
 
-
 class CustomersRoutes(cRegistry: ActorRef[CustomerRegistry.Command])(implicit val system: ActorSystem[_])
-  extends FailFastCirceSupport {
+    extends FailFastCirceSupport {
 
   import io.circe.generic.auto._
 
@@ -28,28 +27,28 @@ class CustomersRoutes(cRegistry: ActorRef[CustomerRegistry.Command])(implicit va
             complete((StatusCodes.OK, event))
           }
         } ~
-          post {
-            entity(as[Customer]) { customer =>
-              onSuccess(createCustomer(customer)) { event =>
-                complete((StatusCodes.Created, event))
-              }
+        post {
+          entity(as[Customer]) { customer =>
+            onSuccess(createCustomer(customer)) { event =>
+              complete((StatusCodes.Created, event))
             }
           }
-      } ~
-        path(JavaUUID) { customerId =>
-          put {
-            entity(as[Customer]) { customer =>
-              onSuccess(updateCustomer(customerId, customer)) { event =>
-                complete((StatusCodes.OK, event))
-              }
-            }
-          } ~
-            delete {
-              onSuccess(deleteCustomer(customerId)) { event =>
-                complete((StatusCodes.OK, event))
-              }
-            }
         }
+      } ~
+      path(JavaUUID) { customerId =>
+        put {
+          entity(as[Customer]) { customer =>
+            onSuccess(updateCustomer(customerId, customer)) { event =>
+              complete((StatusCodes.OK, event))
+            }
+          }
+        } ~
+        delete {
+          onSuccess(deleteCustomer(customerId)) { event =>
+            complete((StatusCodes.OK, event))
+          }
+        }
+      }
     }
 
   def createCustomer(customer: Customer): Future[Event.Added] =

@@ -11,8 +11,8 @@ object RootActor {
 
   object Command {
     case class GetCustomerRegistry(replyTo: ActorRef[ActorRef[CustomerRegistry.Command]]) extends Command
-
     case class GetTariffRegistry(replyTo: ActorRef[ActorRef[TariffRegistry.Command]]) extends Command
+    case class GetGaugeRegistryRoot(replyTo: ActorRef[ActorRef[GaugeRegistryRoot.Command]]) extends Command
   }
 
   def apply(): Behavior[Command] =
@@ -27,6 +27,11 @@ object RootActor {
 
       context.watch(tariffRegistryActor)
 
+      val gaugeRegistryActor: ActorRef[GaugeRegistryRoot.Command] =
+        context.spawn(GaugeRegistryRoot("003", customersRegistryActor), GaugeRegistryRoot.name)
+
+      context.watch(tariffRegistryActor)
+
       Behaviors.receiveMessage[Command] {
 
         case Command.GetCustomerRegistry(replyTo) =>
@@ -36,6 +41,11 @@ object RootActor {
         case Command.GetTariffRegistry(replyTo) =>
           replyTo ! tariffRegistryActor
           Behaviors.same
+
+        case Command.GetGaugeRegistryRoot(replyTo) =>
+          replyTo ! gaugeRegistryActor
+          Behaviors.same
+
       }
 
     }
