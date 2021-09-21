@@ -1,19 +1,22 @@
 package homework
 
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.scaladsl.{ ActorContext, Behaviors }
+import akka.actor.typed.{ ActorRef, Behavior }
 import akka.pattern.StatusReply
 import akka.persistence.typed.PersistenceId
-import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior, ReplyEffect}
+import akka.persistence.typed.scaladsl.{ Effect, EventSourcedBehavior, ReplyEffect }
 
-final case class Tariff(amount:Int)
+final case class Tariff(amount: Int)
 
 object TariffRegistry {
+
+  val name = "TariffRegistry"
 
   sealed trait Command
 
   object Command {
-    final case class SetTariff(tariff: Tariff, replyTo:ActorRef[StatusReply[Event.Updated]]) extends Command
+    final case class SetTariff(tariff: Tariff, replyTo: ActorRef[StatusReply[Event.Updated]]) extends Command
+
     final case class GetState(replyTo: ActorRef[StatusReply[Event.StateResponse]]) extends Command
   }
 
@@ -21,13 +24,15 @@ object TariffRegistry {
 
   object Event {
     final case class Updated(tariff: Tariff) extends Event
+
     final case class StateResponse(currentTariff: Tariff) extends Event
   }
 
-
   final case class State(currentTariff: Tariff)
 
-  def apply(persistenceId: PersistenceId): Behavior[Command] =
+  def apply(pId: String): Behavior[Command] = {
+    val persistenceId: PersistenceId = PersistenceId.ofUniqueId(pId)
+
     Behaviors.setup { ctx =>
       EventSourcedBehavior.withEnforcedReplies(
         persistenceId = persistenceId,
@@ -37,26 +42,27 @@ object TariffRegistry {
       )
     }
 
+  }
+
   def handleCommand(
-                     state: State,
-                     command: Command,
-                     ctx: ActorContext[Command]
-                   ): ReplyEffect[Event, State] =
+    state:   State,
+    command: Command,
+    ctx:     ActorContext[Command]
+  ): ReplyEffect[Event, State] =
     command match {
 
-      case Command.SetTariff(tariff,replyTo) =>
+      case Command.SetTariff(tariff, replyTo) =>
         ctx.log.info(s"Receive set tariff[{}]", tariff)
 
-          val updated = Event.Updated(tariff)
-          Effect
-            .persist(updated)
-            .thenRun {
-              _: State => ctx.log.info(s"Event `set tariff[{}]` added to journal", updated)
-            }
-            .thenReply(replyTo) {
-              _: State => StatusReply.success(updated)
-            }
-
+        val updated = Event.Updated(tariff)
+        Effect
+          .persist(updated)
+          .thenRun { _: State =>
+            ctx.log.info(s"Event `set tariff[{}]` added to journal", updated)
+          }
+          .thenReply(replyTo) { _: State =>
+            StatusReply.success(updated)
+          }
 
       case Command.GetState(replyTo) =>
         ctx.log.info(s"Receive command get state")
@@ -71,7 +77,7 @@ object TariffRegistry {
 
       case e: Event.Updated =>
         ctx.log.debug("Event Update[{}] received", e)
-        state.copy(currentTariff=e.tariff)
+        state.copy(currentTariff = e.tariff)
 
       case e: Event.StateResponse => //Это событие не должно возникать ?
         ctx.log.debug("Event StateResponse[{}] received", e)
@@ -85,4 +91,3 @@ object TariffRegistry {
   }
 
 }
-

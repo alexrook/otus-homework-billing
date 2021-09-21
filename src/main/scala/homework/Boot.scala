@@ -2,60 +2,27 @@ package homework
 
 import akka.actor.typed.scaladsl.AskPattern.Askable
 import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.{ActorRef, ActorSystem, Behavior, Scheduler}
+import akka.actor.typed.{ ActorRef, ActorSystem, Behavior, Scheduler }
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.StatusCodes
-import akka.http.scaladsl.server.{ExceptionHandler, Route}
+import akka.http.scaladsl.server.{ ExceptionHandler, Route }
 import akka.util.Timeout
 
-import scala.concurrent.ExecutionContextExecutor
+import scala.concurrent.{ ExecutionContextExecutor, Future }
 import scala.concurrent.duration._
-import scala.util.{Failure, Success}
-
-object RootActor {
-
-  val name: String = "RootActor"
-
-  sealed trait Command
-
-  object Command {
-    case class GetCustomerRegistry(replyTo: ActorRef[ActorRef[CustomerRegistry.Command]]) extends Command
-  }
-
-  def apply(): Behavior[Command] = Behaviors.setup[Command] { context =>
-
-    val customersRegistryActor: ActorRef[CustomerRegistry.Command] =
-      context.spawn(CustomerRegistry(), "CustomerRegistryActor")
-
-    context.watch(customersRegistryActor)
-
-    println(customersRegistryActor)
-
-
-    Behaviors.receiveMessage[Command] {
-
-      case Command.GetCustomerRegistry(replyTo) =>
-        println("GetCustomerRegistry")
-        replyTo ! customersRegistryActor
-        Behaviors.same
-
-    }
-
-  }
-
-}
+import scala.util.{ Failure, Success }
 
 object Boot {
 
-   import akka.http.scaladsl.server.Directives._
+  import akka.http.scaladsl.server.Directives._
 
   val myExceptionHandler: ExceptionHandler =
     ExceptionHandler {
-    case be: BusinessException =>
-      extractUri { uri =>
-         complete((StatusCodes.BadRequest, be.msg))
-      }
-  }
+      case be: BusinessException =>
+        extractUri { uri =>
+          complete((StatusCodes.BadRequest, be.msg))
+        }
+    }
 
   def main(args: Array[String]): Unit = {
 
@@ -65,17 +32,18 @@ object Boot {
 
     // needed for the future flatMap/onComplete in the end
     implicit val executionContext: ExecutionContextExecutor = system.executionContext
-    implicit val scheduler: Scheduler = system.scheduler
-    implicit val timeout: Timeout = Timeout(5.seconds)
+    implicit val scheduler:        Scheduler                = system.scheduler
+    implicit val timeout:          Timeout                  = Timeout(5.seconds)
 
-    val server =
+    val server: Future[Http.ServerBinding] =
       for {
         customersRegistryActor <- system.ask(Command.GetCustomerRegistry)
+        tariffRegistryActor    <- system.ask(Command.GetTariffRegistry)
         customersRoutes: CustomersRoutes = new CustomersRoutes(customersRegistryActor)(system)
-         //otherRoutes: Route = ???
+        tariffRoutes = new TariffRoutes(tariffRegistryActor)
 
-        routes: Route =handleExceptions(myExceptionHandler){
-          customersRoutes.routes //~ otherRoutes
+        routes: Route = handleExceptions(myExceptionHandler) {
+          customersRoutes.routes ~ tariffRoutes.routes
         }
 
         server <- Http().newServerAt("localhost", 8080).bind(routes)

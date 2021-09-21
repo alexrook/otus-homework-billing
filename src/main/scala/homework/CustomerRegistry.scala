@@ -1,10 +1,10 @@
 package homework
 
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.scaladsl.{ ActorContext, Behaviors }
+import akka.actor.typed.{ ActorRef, Behavior }
 import akka.pattern.StatusReply
 import akka.persistence.typed.PersistenceId
-import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior, ReplyEffect}
+import akka.persistence.typed.scaladsl.{ Effect, EventSourcedBehavior, ReplyEffect }
 
 import java.util.UUID
 
@@ -14,14 +14,17 @@ class BusinessException(val code: Int, val msg: String) extends Exception(msg)
 
 object CustomerRegistry {
 
-  val persistenceId: PersistenceId = PersistenceId.ofUniqueId("001")
+  val name: String = "CustomerRegistry"
 
   sealed trait Command
 
   object Command {
-    final case class CreateCustomer(id: UUID, user: Customer, replyTo: ActorRef[StatusReply[Event.Added]]) extends Command
 
-    final case class UpdateCustomer(id: UUID, user: Customer, replyTo: ActorRef[StatusReply[Event.Updated]]) extends Command
+    final case class CreateCustomer(id: UUID, user: Customer, replyTo: ActorRef[StatusReply[Event.Added]])
+        extends Command
+
+    final case class UpdateCustomer(id: UUID, user: Customer, replyTo: ActorRef[StatusReply[Event.Updated]])
+        extends Command
 
     final case class DeleteCustomer(id: UUID, replyTo: ActorRef[StatusReply[Event.Deleted]]) extends Command
 
@@ -41,10 +44,11 @@ object CustomerRegistry {
 
   }
 
-
   final case class State(customers: Set[UUID])
 
-  def apply(): Behavior[Command] =
+  def apply(pId: String): Behavior[Command] = {
+    val persistenceId: PersistenceId = PersistenceId.ofUniqueId(pId)
+
     Behaviors.setup { ctx =>
       EventSourcedBehavior.withEnforcedReplies(
         persistenceId = persistenceId,
@@ -53,12 +57,13 @@ object CustomerRegistry {
         eventHandler = (state, event) => handleEvent(state, event, ctx)
       )
     }
+  }
 
   def handleCommand(
-                     state: State,
-                     command: Command,
-                     ctx: ActorContext[Command]
-                   ): ReplyEffect[Event, State] =
+    state:   State,
+    command: Command,
+    ctx:     ActorContext[Command]
+  ): ReplyEffect[Event, State] =
     command match {
 
       case Command.CreateCustomer(id, customer, replyTo) =>
@@ -71,11 +76,11 @@ object CustomerRegistry {
           val eAdd = Event.Added(id = id, customer = customer)
           Effect
             .persist(eAdd)
-            .thenRun {
-              _: State => ctx.log.info(s"Event `create customer[{}] with id[{}]` added to journal", customer, id)
+            .thenRun { _: State =>
+              ctx.log.info(s"Event `create customer[{}] with id[{}]` added to journal", customer, id)
             }
-            .thenReply(replyTo) {
-              _: State => StatusReply.success(eAdd)
+            .thenReply(replyTo) { _: State =>
+              StatusReply.success(eAdd)
             }
         }
 
@@ -85,11 +90,11 @@ object CustomerRegistry {
           val eUpdate = Event.Updated(id = id, customer = customer)
           Effect
             .persist(eUpdate)
-            .thenRun {
-              _: State => ctx.log.info(s"Event `update customer[{}] with id[{}]` added to journal", customer, id)
+            .thenRun { _: State =>
+              ctx.log.info(s"Event `update customer[{}] with id[{}]` added to journal", customer, id)
             }
-            .thenReply(replyTo) {
-              _: State => StatusReply.success(eUpdate)
+            .thenReply(replyTo) { _: State =>
+              StatusReply.success(eUpdate)
             }
         } else {
           Effect.reply(replyTo)(
@@ -97,18 +102,17 @@ object CustomerRegistry {
           )
         }
 
-
       case Command.DeleteCustomer(id, replyTo) =>
         ctx.log.info(s"Receive command delete customer with id[{}]", id)
         if (state.customers.contains(id)) {
           val eDelete = Event.Deleted(id = id)
           Effect
             .persist(eDelete)
-            .thenRun {
-              _: State => ctx.log.info(s"Event `delete customer with id[{}]` added to journal", id)
+            .thenRun { _: State =>
+              ctx.log.info(s"Event `delete customer with id[{}]` added to journal", id)
             }
-            .thenReply(replyTo) {
-              _: State => StatusReply.success(eDelete)
+            .thenReply(replyTo) { _: State =>
+              StatusReply.success(eDelete)
             }
         } else {
           Effect.reply(replyTo)(
@@ -151,4 +155,3 @@ object CustomerRegistry {
   }
 
 }
-

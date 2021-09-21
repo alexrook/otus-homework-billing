@@ -1,4 +1,5 @@
 package homework
+
 import akka.actor.testkit.typed.scaladsl.ActorTestKit
 import akka.http.scaladsl.marshalling.Marshal
 import akka.http.scaladsl.model._
@@ -7,13 +8,13 @@ import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
-
 class CustomerRoutesSpec extends AnyWordSpec with Matchers with ScalaFutures with ScalatestRouteTest {
 
   // the Akka HTTP route testkit does not yet support a typed actor system (https://github.com/akka/akka-http/issues/2036)
   // so we have to adapt for now
-  lazy val testKit = ActorTestKit()
+  lazy val testKit         = ActorTestKit()
   implicit def typedSystem = testKit.system
+
   override def createActorSystem(): akka.actor.ActorSystem =
     testKit.system.classicSystem
 
@@ -21,8 +22,8 @@ class CustomerRoutesSpec extends AnyWordSpec with Matchers with ScalaFutures wit
   // We use the real UserRegistryActor to test it while we hit the Routes,
   // but we could "mock" it by implementing it in-place or by using a TestProbe
   // created with testKit.createTestProbe()
-  val customerRegistry = testKit.spawn(CustomerRegistry())
-  lazy val routes = new CustomersRoutes(customerRegistry).routes
+  val customerRegistry = testKit.spawn(CustomerRegistry("001"))
+  lazy val routes      = new CustomersRoutes(customerRegistry).routes
 
 //  "CustomerRoutes" should {
 //     "be able to add users (POST /users)" in {
