@@ -51,10 +51,10 @@ object CustomerRegistry {
 
     Behaviors.setup { ctx =>
       EventSourcedBehavior.withEnforcedReplies(
-        persistenceId = persistenceId,
-        emptyState = State(Set.empty[UUID]),
+        persistenceId  = persistenceId,
+        emptyState     = State(Set.empty[UUID]),
         commandHandler = (state, command) => handleCommand(state, command, ctx),
-        eventHandler = (state, event) => handleEvent(state, event, ctx)
+        eventHandler   = (state, event) => handleEvent(state, event, ctx)
       )
     }
   }
@@ -66,8 +66,8 @@ object CustomerRegistry {
   ): ReplyEffect[Event, State] =
     command match {
 
-      case Command.CreateCustomer(id, customer, replyTo) =>
-        ctx.log.info(s"Receive command create customer[{}] with id[{}]", customer, id)
+      case cmd @ Command.CreateCustomer(id, customer, replyTo) =>
+        ctx.log.info(s"Receive command {}", cmd)
         if (state.customers.contains(id)) {
           Effect.reply(replyTo)(
             replyError(s"The customer with id[$id] already exists", ctx)
@@ -77,21 +77,21 @@ object CustomerRegistry {
           Effect
             .persist(eAdd)
             .thenRun { _: State =>
-              ctx.log.info(s"Event `create customer[{}] with id[{}]` added to journal", customer, id)
+              ctx.log.info(s"{} added to journal", eAdd)
             }
             .thenReply(replyTo) { _: State =>
               StatusReply.success(eAdd)
             }
         }
 
-      case Command.UpdateCustomer(id, customer, replyTo) =>
-        ctx.log.info(s"Receive command update customer[{}] with id[{}]", customer, id)
+      case cmd @ Command.UpdateCustomer(id, customer, replyTo) =>
+        ctx.log.info(s"Receive command {}", cmd)
         if (state.customers.contains(id)) {
           val eUpdate = Event.Updated(id = id, customer = customer)
           Effect
             .persist(eUpdate)
             .thenRun { _: State =>
-              ctx.log.info(s"Event `update customer[{}] with id[{}]` added to journal", customer, id)
+              ctx.log.info(s"{}} added to journal", eUpdate)
             }
             .thenReply(replyTo) { _: State =>
               StatusReply.success(eUpdate)
@@ -102,14 +102,14 @@ object CustomerRegistry {
           )
         }
 
-      case Command.DeleteCustomer(id, replyTo) =>
-        ctx.log.info(s"Receive command delete customer with id[{}]", id)
+      case cmd @ Command.DeleteCustomer(id, replyTo) =>
+        ctx.log.info(s"Receive command {}", cmd)
         if (state.customers.contains(id)) {
           val eDelete = Event.Deleted(id = id)
           Effect
             .persist(eDelete)
             .thenRun { _: State =>
-              ctx.log.info(s"Event `delete customer with id[{}]` added to journal", id)
+              ctx.log.info(s"{} added to journal", eDelete)
             }
             .thenReply(replyTo) { _: State =>
               StatusReply.success(eDelete)
@@ -132,19 +132,19 @@ object CustomerRegistry {
     event match {
 
       case e: Event.Added =>
-        ctx.log.debug("Event Added[{}] received", e)
+        ctx.log.debug("Event {} received", e)
         state.copy(state.customers + e.id)
 
       case e: Event.Updated =>
-        ctx.log.debug("Event Updated[{}] received", e)
+        ctx.log.debug("Event {}} received", e)
         state
 
       case e: Event.Deleted =>
-        ctx.log.debug("Event Deleted[{}] received", e)
+        ctx.log.debug("Event {} received", e)
         state.copy(state.customers - e.id)
 
       case e: Event.StateResponse => //Это событие не должно возникать ?
-        ctx.log.debug("Event StateResponse[{}] received", e)
+        ctx.log.debug("Event {} received", e)
         state
 
     }

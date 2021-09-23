@@ -44,6 +44,11 @@ class GaugeRoutes(gaugeRegistry: ActorRef[GaugeRegistryRoot.Command])(implicit v
               complete((StatusCodes.OK, event))
             }
           }
+        } ~
+        delete {
+          onSuccess(dropGauge(gaugeId)) { event =>
+            complete((StatusCodes.OK, event))
+          }
         }
       }
     }
@@ -53,7 +58,7 @@ class GaugeRoutes(gaugeRegistry: ActorRef[GaugeRegistryRoot.Command])(implicit v
       GaugeRegistryRoot.Command.CreateGauge(customerId, UUID.randomUUID(), gauge, _)
     )
 
-  def updateGauge(gaugeId: UUID, gauge: Gauge): Future[Event.Updated] =
+  def updateGauge(gaugeId: UUID, gauge: Gauge): Future[GaugeRegistry.Event.Updated] =
     gaugeRegistry.askWithStatus(GaugeRegistryRoot.Command.UpdateGauge(gaugeId, gauge, _))
 
   def dropGauge(gaugeId: UUID): Future[Event.Dropped] =

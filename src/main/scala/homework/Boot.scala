@@ -28,7 +28,7 @@ object Boot {
 
     import RootActor.Command
 
-    implicit val system: ActorSystem[Command] = ActorSystem[Command](RootActor.apply(), RootActor.name)
+    implicit val system: ActorSystem[Command] = ActorSystem[Command](RootActor.apply, RootActor.name)
 
     // needed for the future flatMap/onComplete in the end
     implicit val executionContext: ExecutionContextExecutor = system.executionContext

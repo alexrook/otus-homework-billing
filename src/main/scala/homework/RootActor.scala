@@ -1,6 +1,6 @@
 package homework
 
-import akka.actor.typed.{ ActorRef, Behavior }
+import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 
 object RootActor {
@@ -16,21 +16,21 @@ object RootActor {
   }
 
   def apply(): Behavior[Command] =
-    Behaviors.setup[Command] { context =>
+    Behaviors.setup[Command] { ctx =>
       val customersRegistryActor: ActorRef[CustomerRegistry.Command] =
-        context.spawn(CustomerRegistry("001"), CustomerRegistry.name)
+        ctx.spawn(CustomerRegistry("001"), CustomerRegistry.name)
 
-      context.watch(customersRegistryActor)
+      ctx.watch(customersRegistryActor)
 
       val tariffRegistryActor: ActorRef[TariffRegistry.Command] =
-        context.spawn(TariffRegistry("002"), TariffRegistry.name)
+        ctx.spawn(TariffRegistry("002"), TariffRegistry.name)
 
-      context.watch(tariffRegistryActor)
+      ctx.watch(tariffRegistryActor)
 
       val gaugeRegistryActor: ActorRef[GaugeRegistryRoot.Command] =
-        context.spawn(GaugeRegistryRoot("003", customersRegistryActor), GaugeRegistryRoot.name)
+        ctx.spawn(GaugeRegistryRoot("003", customerRegistryPersistenceId = "001")(ctx.system), GaugeRegistryRoot.name)
 
-      context.watch(tariffRegistryActor)
+      ctx.watch(tariffRegistryActor)
 
       Behaviors.receiveMessage[Command] {
 
