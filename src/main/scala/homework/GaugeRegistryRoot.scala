@@ -1,6 +1,7 @@
 package homework
 
 import akka.NotUsed
+import akka.actor.typed.scaladsl.AskPattern._
 import akka.actor.typed.scaladsl.{ ActorContext, Behaviors }
 import akka.actor.typed.{ ActorRef, ActorSystem, Behavior }
 import akka.pattern.StatusReply
@@ -9,11 +10,9 @@ import akka.persistence.query.{ EventEnvelope, PersistenceQuery }
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{ Effect, EffectBuilder, EventSourcedBehavior, ReplyEffect }
 import akka.stream.scaladsl.Source
-import akka.actor.typed.scaladsl.AskPattern._
 import akka.util.Timeout
 
 import java.util.UUID
-import scala.annotation.tailrec
 import scala.concurrent.{ ExecutionContextExecutor, Future }
 import scala.util.{ Failure, Success }
 
@@ -253,8 +252,8 @@ object GaugeRegistryRoot {
         val newGaugeByUser = state.gaugeByCustomer + (customerId -> Map.empty[UUID, ActorRef[GaugeRegistry.Command]])
         state.copy(gaugeByCustomer = newGaugeByUser)
 
-      case Event.CustomerDrop(customerId) =>
-        ctx.log.info("Event {} received", customerId)
+      case e @ Event.CustomerDrop(customerId) =>
+        ctx.log.info("Event {} received", e)
         state.copy(gaugeByCustomer = state.gaugeByCustomer - customerId)
 
     }
