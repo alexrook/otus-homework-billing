@@ -1,15 +1,14 @@
 package homework
 
 import akka.actor.typed.scaladsl.AskPattern.Askable
-import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.{ ActorRef, ActorSystem, Behavior, Scheduler }
+import akka.actor.typed.{ ActorSystem, Scheduler }
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.{ ExceptionHandler, Route }
 import akka.util.Timeout
 
-import scala.concurrent.{ ExecutionContextExecutor, Future }
 import scala.concurrent.duration._
+import scala.concurrent.{ ExecutionContextExecutor, Future }
 import scala.util.{ Failure, Success }
 
 object Boot {
@@ -28,7 +27,7 @@ object Boot {
 
     import RootActor.Command
 
-    implicit val system: ActorSystem[Command] = ActorSystem[Command](RootActor.apply, RootActor.name)
+    implicit val system: ActorSystem[Command] = ActorSystem[Command](RootActor.apply(), RootActor.name)
 
     // needed for the future flatMap/onComplete in the end
     implicit val executionContext: ExecutionContextExecutor = system.executionContext
@@ -37,16 +36,18 @@ object Boot {
 
     val server: Future[Http.ServerBinding] =
       for {
-        customersRegistryActor <- system.ask(Command.GetCustomerRegistry)
-        tariffRegistryActor    <- system.ask(Command.GetTariffRegistry)
-        gaugeRegistryRootActor <- system.ask(Command.GetGaugeRegistryRoot)
+        customersRegistryActor   <- system.ask(Command.GetCustomerRegistry)
+        tariffRegistryActor      <- system.ask(Command.GetTariffRegistry)
+        gaugeRegistryRootActor   <- system.ask(Command.GetGaugeRegistryRoot)
+        accountRegistryRootActor <- system.ask(Command.GetAccountRegistryRoot)
 
         customersRoutes: CustomersRoutes = new CustomersRoutes(customersRegistryActor)(system)
-        tariffRoutes = new TariffRoutes(tariffRegistryActor)
-        gaugeRoutes  = new GaugeRoutes(gaugeRegistryRootActor)
+        tariffRoutes  = new TariffRoutes(tariffRegistryActor)
+        gaugeRoutes   = new GaugeRoutes(gaugeRegistryRootActor)
+        accountRoutes = new AccountRoutes(accountRegistryRootActor)
 
         routes: Route = handleExceptions(myExceptionHandler) {
-          customersRoutes.routes ~ tariffRoutes.routes ~ gaugeRoutes.routes
+          customersRoutes.routes ~ tariffRoutes.routes ~ gaugeRoutes.routes ~ accountRoutes.routes
         }
 
         server <- Http().newServerAt("localhost", 8080).bind(routes)

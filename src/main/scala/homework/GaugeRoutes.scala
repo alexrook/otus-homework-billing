@@ -38,6 +38,11 @@ class GaugeRoutes(gaugeRegistry: ActorRef[GaugeRegistryRoot.Command])(implicit v
         }
       } ~
       path(JavaUUID) { gaugeId =>
+        get {
+          onSuccess(getGauge(gaugeId)) { event =>
+            complete((StatusCodes.OK, event))
+          }
+        } ~
         put {
           entity(as[Gauge]) { gauge =>
             onSuccess(updateGauge(gaugeId, gauge)) { event =>
@@ -66,5 +71,8 @@ class GaugeRoutes(gaugeRegistry: ActorRef[GaugeRegistryRoot.Command])(implicit v
 
   def getState: Future[Event.StateResponse] =
     gaugeRegistry.askWithStatus(GaugeRegistryRoot.Command.GetState)
+
+  def getGauge(gaugeId: UUID): Future[GaugeRegistry.State] =
+    gaugeRegistry.askWithStatus(GaugeRegistryRoot.Command.GetGauge(gaugeId, _))
 
 }

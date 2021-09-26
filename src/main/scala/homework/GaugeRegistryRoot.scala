@@ -1,6 +1,6 @@
 package homework
 
-import akka.NotUsed
+import akka.{ NotUsed, pattern }
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.actor.typed.scaladsl.{ ActorContext, Behaviors }
 import akka.actor.typed.{ ActorRef, ActorSystem, Behavior }
@@ -11,6 +11,7 @@ import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{ Effect, EffectBuilder, EventSourcedBehavior, ReplyEffect }
 import akka.stream.scaladsl.Source
 import akka.util.Timeout
+import homework.GaugeRegistryRoot.{ findGaugeCoordinates, replyError }
 
 import java.util.UUID
 import scala.concurrent.{ ExecutionContextExecutor, Future }
@@ -33,17 +34,22 @@ object GaugeRegistryRoot {
       replyTo:    ActorRef[StatusReply[Event.Added]]
     ) extends Command
 
-    final case class UpdateGauge(gaugeId: UUID,
-                                 gauge:   Gauge,
-                                 replyTo: ActorRef[StatusReply[GaugeRegistry.Event.Updated]])
-        extends Command
+    final case class UpdateGauge(
+      gaugeId: UUID,
+      gauge:   Gauge,
+      replyTo: ActorRef[StatusReply[GaugeRegistry.Event.Updated]]
+    ) extends Command
+
     final case class DropGaugeA(coordinates: GaugeCoordinates, replyTo: ActorRef[StatusReply[Event.Dropped]])
         extends Command
-    final case class DropGauge(gaugeId:             UUID, replyTo: ActorRef[StatusReply[Event.Dropped]]) extends Command
-    final case class GetState(replyTo:              ActorRef[StatusReply[Event.StateResponse]]) extends Command
-    final case class AddCustomer(customerId:        UUID) extends Command
+    final case class DropGauge(gaugeId: UUID, replyTo: ActorRef[StatusReply[Event.Dropped]]) extends Command
+    final case class GetGauge(gaugeId: UUID, replyTo: ActorRef[StatusReply[GaugeRegistry.State]]) extends Command
+
+    final case class GetState(replyTo: ActorRef[StatusReply[Event.StateResponse]]) extends Command
+
+    final case class AddCustomer(customerId: UUID) extends Command
     final case class DropCustomerGauges(customerId: UUID) extends Command
-    final case class DropCustomer(customerId:       UUID) extends Command
+    final case class DropCustomer(customerId: UUID) extends Command
 
   }
 
@@ -55,16 +61,15 @@ object GaugeRegistryRoot {
   sealed trait Event
 
   object Event {
-    final case class Added(customerId:               UUID, gaugeId: UUID, gauge: Gauge) extends Event
-    final case class Updated(customerId:             UUID, gaugeId: UUID, gauge: Gauge) extends Event
-    final case class Dropped(customerId:             UUID, gaugeId: UUID) extends Event
+    final case class Added(customerId: UUID, gaugeId: UUID, gauge: Gauge) extends Event
+    final case class Updated(customerId: UUID, gaugeId: UUID, gauge: Gauge) extends Event
+    final case class Dropped(customerId: UUID, gaugeId: UUID) extends Event
     final case class StateResponse(gaugesByCustomer: Map[UUID, Set[UUID]]) extends Event
-    final case class CustomerAdded(customerId:       UUID) extends Event
-    final case class CustomerDrop(customerId:        UUID) extends Event
+    final case class CustomerAdded(customerId: UUID) extends Event
+    final case class CustomerDrop(customerId: UUID) extends Event
   }
 
   /**
-    *
     * @param gaugeByCustomer карта customer -> (gaugeId -> Gauge Actor)
     */
   final case class State(gaugeByCustomer: GaugesActorsByCustomer)
@@ -80,8 +85,8 @@ object GaugeRegistryRoot {
 
   }
 
-  def apply(pId:     String, customerRegistryPersistenceId: String)(
-    implicit system: ActorSystem[_]
+  def apply(pId: String, customerRegistryPersistenceId: String)(implicit
+    system:      ActorSystem[_]
   ): Behavior[Command] = {
     val persistenceId: PersistenceId = PersistenceId.ofUniqueId(pId)
 
@@ -96,7 +101,7 @@ object GaugeRegistryRoot {
 
       customersEvents
         .collect {
-          case EventEnvelope(_, _, _, event: CustomerRegistry.Event.Added)   => Command.AddCustomer(event.id)
+          case EventEnvelope(_, _, _, event: CustomerRegistry.Event.Added) => Command.AddCustomer(event.id)
           case EventEnvelope(_, _, _, event: CustomerRegistry.Event.Deleted) => Command.DropCustomerGauges(event.id)
         }
         .runForeach { customerEvent =>
@@ -111,7 +116,7 @@ object GaugeRegistryRoot {
             .withDefault(_ => Map.empty[UUID, ActorRef[GaugeRegistry.Command]])
         ),
         commandHandler = (state: State, command) => handleCommand(state, command)(ctx, timeout),
-        eventHandler   = (state, event) => handleEvent(state, event)
+        eventHandler = (state, event) => handleEvent(state, event)
       )
     }
 
@@ -164,6 +169,13 @@ object GaugeRegistryRoot {
               }
 
           case None => Effect.reply(replyTo)(replyError("Customer or gauge does not exist or has been deleted"))
+        }
+
+      case Command.GetGauge(gaugeId, replyTo: ActorRef[StatusReply[GaugeRegistry.State]]) =>
+        if (tellToGaugeActor(gaugeId, state, GaugeRegistry.Command.GetState(replyTo))) {
+          Effect.noReply
+        } else {
+          Effect.reply(replyTo)(replyError(s"The gauge[$gaugeId] not found"))
         }
 
       case Command.AddCustomer(customerId) if state.gaugeByCustomer.contains(customerId) =>
@@ -229,13 +241,13 @@ object GaugeRegistryRoot {
 
         val gaugeRegistry: ActorRef[GaugeRegistry.Command] = ctx.spawn(
           behavior = GaugeRegistry(customerId, gaugeId.toString, "", gaugeId, gauge),
-          name     = s"GaugeRegistry.name-$gaugeId"
+          name = s"GaugeRegistry.name-$gaugeId"
         )
 
         ctx.watch(gaugeRegistry)
 
-        val newGaugesForCustomer
-          : Map[UUID, ActorRef[GaugeRegistry.Command]] = state.gaugeByCustomer(customerId) + (gaugeId -> gaugeRegistry)
+        val newGaugesForCustomer: Map[UUID, ActorRef[GaugeRegistry.Command]] =
+          state.gaugeByCustomer(customerId) + (gaugeId -> gaugeRegistry)
         state.copy(state.gaugeByCustomer + (customerId -> newGaugesForCustomer))
 
       case e @ Event.Dropped(customerId, gaugeId) =>
@@ -243,8 +255,8 @@ object GaugeRegistryRoot {
 
         tellToGaugeActor(gaugeId, state, GaugeRegistry.Command.DropGauge(gaugeId))
 
-        val newGaugesForCustomer
-          : Map[UUID, ActorRef[GaugeRegistry.Command]] = state.gaugeByCustomer(customerId) - gaugeId
+        val newGaugesForCustomer: Map[UUID, ActorRef[GaugeRegistry.Command]] =
+          state.gaugeByCustomer(customerId) - gaugeId
         state.copy(state.gaugeByCustomer + (customerId -> newGaugesForCustomer))
 
       case e @ Event.CustomerAdded(customerId) =>
@@ -263,8 +275,8 @@ object GaugeRegistryRoot {
     StatusReply.error(new BusinessException(404, msg))
   }
 
-  def tellToGaugeActor(gaugeId: UUID, state: State, command: GaugeRegistry.Command)(
-    implicit ctx:               ActorContext[_]
+  def tellToGaugeActor(gaugeId: UUID, state: State, command: GaugeRegistry.Command)(implicit
+    ctx:                        ActorContext[_]
   ): Boolean =
     findGaugeCoordinates(gaugeId, state.gaugeByCustomer) match {
       case Some(coordinates) =>

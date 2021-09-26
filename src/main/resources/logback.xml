@@ -14,7 +14,7 @@
         <appender-ref ref="STDOUT"/>
     </appender>
 
-    <logger name="akka.persistence.query.journal.leveldb.EventsByPersistenceIdStage"
+    <logger name="akka.persistence.query.journal.leveldb"
             level="INFO"/>
     <logger name="akka.serialization" level="INFO"/>
 
