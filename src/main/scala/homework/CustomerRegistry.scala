@@ -51,10 +51,10 @@ object CustomerRegistry {
 
     Behaviors.setup { ctx =>
       EventSourcedBehavior.withEnforcedReplies(
-        persistenceId  = persistenceId,
-        emptyState     = State(Set.empty[UUID]),
+        persistenceId = persistenceId,
+        emptyState = State(Set.empty[UUID]),
         commandHandler = (state, command) => handleCommand(state, command, ctx),
-        eventHandler   = (state, event) => handleEvent(state, event, ctx)
+        eventHandler = (state, event) => handleEvent(state, event, ctx)
       )
     }
   }

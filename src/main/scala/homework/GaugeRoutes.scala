@@ -1,13 +1,13 @@
 package homework
 
 import akka.actor.typed.scaladsl.AskPattern._
-import akka.actor.typed.{ ActorRef, ActorSystem }
+import akka.actor.typed.{ActorRef, ActorSystem}
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import akka.util.Timeout
 import de.heikoseeberger.akkahttpcirce.FailFastCirceSupport
-import homework.GaugeRegistryRoot.Event
+import homework.GaugeRegistryRoot.{Event, StateResponse}
 
 import java.util.UUID
 import scala.concurrent.Future
@@ -69,7 +69,7 @@ class GaugeRoutes(gaugeRegistry: ActorRef[GaugeRegistryRoot.Command])(implicit v
   def dropGauge(gaugeId: UUID): Future[Event.Dropped] =
     gaugeRegistry.askWithStatus(GaugeRegistryRoot.Command.DropGauge(gaugeId, _))
 
-  def getState: Future[Event.StateResponse] =
+  def getState: Future[StateResponse] =
     gaugeRegistry.askWithStatus(GaugeRegistryRoot.Command.GetState)
 
   def getGauge(gaugeId: UUID): Future[GaugeRegistry.State] =

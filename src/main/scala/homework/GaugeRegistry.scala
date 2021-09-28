@@ -27,9 +27,7 @@ object GaugeRegistry {
   object Command {
     case class UpdateGauge(gauge: Gauge, replyTo: ActorRef[StatusReply[Event.Updated]]) extends Command
     case class DropGauge(gaugeId: UUID) extends Command
-    case class Consume(customerId: UUID, gaugeId: UUID, consumed: Int) extends Command
-    case class GetState(replyTo: ActorRef[StatusReply[State]]) extends Command
-    case object StopSelf extends Command
+    case class GetState(replyTo:  ActorRef[StatusReply[State]]) extends Command
   }
 
   /**
@@ -47,10 +45,10 @@ object GaugeRegistry {
     Behaviors.setup { implicit ctx =>
       EventSourcedBehavior
         .withEnforcedReplies(
-          persistenceId = persistenceId,
-          emptyState = State(0, gauge.value),
+          persistenceId  = persistenceId,
+          emptyState     = State(0, gauge.value),
           commandHandler = (state: State, command: Command) => handleCommand(gaugeId, state, command),
-          eventHandler = (state: State, event: Event) => handleEvent(state, event)
+          eventHandler   = (state: State, event: Event) => handleEvent(state, event)
         )
         .withTagger {
           case _: Event.Updated => Set(tagGaugeUpdated)
@@ -64,10 +62,9 @@ object GaugeRegistry {
 
   }
 
-  def handleCommand(gaugeId: UUID, state: State, command: Command)(implicit
-    ctx:                     ActorContext[Command],
-    customerId:              UUID
-  ): ReplyEffect[Event, State] =
+  def handleCommand(gaugeId:                                                   UUID, state: State, command: Command)(implicit
+                                                                   ctx:        ActorContext[Command],
+                                                                   customerId: UUID): ReplyEffect[Event, State] =
     command match {
 
       case Command.UpdateGauge(newGauge, replyTo) if newGauge.value >= state.currentValue =>
@@ -75,7 +72,7 @@ object GaugeRegistry {
           Event.Updated(
             customerId = customerId,
             gaugeId,
-            gauge = newGauge,
+            gauge    = newGauge,
             consumed = newGauge.value - state.currentValue
           )
 
