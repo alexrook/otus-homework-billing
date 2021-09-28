@@ -11,7 +11,7 @@ import akka.util.Timeout
 
 import java.util.UUID
 
-final case class Account(balance: Int, consumed: Int, seqNo: Long)
+final case class Account(balance:         Int, consumed: Int, gauges: Map[UUID, Long])
 final case class AccountState(customerId: UUID, account: Account)
 
 object AccountRegistryRoot {
@@ -22,10 +22,10 @@ object AccountRegistryRoot {
 
   object Command {
 
-    final case class AddAccount(customerId: UUID) extends Command
+    final case class AddAccount(customerId:  UUID) extends Command
     final case class DropAccount(customerId: UUID) extends Command
-    final case class SetTariff(amount: Int) extends Command
-    final case class Withdraw(customerId: UUID, consumed: Int, seqNo: Long) extends Command
+    final case class SetTariff(amount:       Int) extends Command
+    final case class Withdraw(customerId:    UUID, gaugeId: UUID, consumed: Int, seqNo: Long) extends Command
 
     final case class Deposit(customerId: UUID, amount: Int, replyTo: ActorRef[StatusReply[Event.Deposited]])
         extends Command
@@ -37,19 +37,18 @@ object AccountRegistryRoot {
   sealed trait Event
 
   object Event {
-    final case class Added(customerId: UUID) extends Event
-    final case class Dropped(customerId: UUID) extends Event
-    final case class NewTariff(amount: Int) extends Event
-    final case class Withdrawal(customerId: UUID, consumed: Int, seqNo: Long) extends Event
-    final case class Deposited(customerId: UUID, amount: Int) extends Event
+    final case class Added(customerId:      UUID) extends Event
+    final case class Dropped(customerId:    UUID) extends Event
+    final case class NewTariff(amount:      Int) extends Event
+    final case class Withdrawal(customerId: UUID, gaugeId: UUID, consumed: Int, seqNo: Long) extends Event
+    final case class Deposited(customerId:  UUID, amount: Int) extends Event
 
   }
 
   final case class State(accounts: Map[UUID, Account], tariff: Int)
 
-  def apply(pId: String, customersPID: String, tariffPID: String)(implicit
-    system:      ActorSystem[_]
-  ): Behavior[Command] = {
+  def apply(pId:                                                          String, customersPID: String, tariffPID: String)(implicit
+                                                                  system: ActorSystem[_]): Behavior[Command] = {
 
     val persistenceId: PersistenceId = PersistenceId.ofUniqueId(pId)
 
@@ -82,18 +81,18 @@ object AccountRegistryRoot {
       readJournal
         .eventsByTag(GaugeRegistry.tagGaugeUpdated)
         .collect {
-          case EventEnvelope(_, _, sequenceNo: Long, GaugeRegistry.Event.Updated(customerId, _, _, consumed)) =>
-            Command.Withdraw(customerId, consumed = consumed, sequenceNo)
+          case EventEnvelope(_, _, sequenceNo: Long, GaugeRegistry.Event.Updated(customerId, gaugeId, _, consumed)) =>
+            Command.Withdraw(customerId, gaugeId = gaugeId, consumed = consumed, sequenceNo)
         }
         .runForeach { command =>
           ctx.self ! command
         }
 
       EventSourcedBehavior.withEnforcedReplies(
-        persistenceId = persistenceId,
-        emptyState = State(Map.empty[UUID, Account], 0),
+        persistenceId  = persistenceId,
+        emptyState     = State(Map.empty[UUID, Account], 0),
         commandHandler = (state: State, command) => handleCommand(state, command)(ctx, timeout),
-        eventHandler = (state, event) => handleEvent(state, event)
+        eventHandler   = (state, event) => handleEvent(state, event)
       )
     }
 
@@ -143,10 +142,13 @@ object AccountRegistryRoot {
           }
           .thenNoReply()
 
-      case Command.Withdraw(customerId, consumed: Int, seqNo) if state.accounts.contains(customerId) =>
+      case Command.Withdraw(customerId, gaugeId, consumed: Int, newSeqNo: Long)
+          if state.accounts.contains(customerId) =>
         ctx.log.info(s"account[{}] withdraw command", customerId)
-        if (seqNo > state.accounts(customerId).seqNo) {
-          val event = Event.Withdrawal(customerId, consumed, seqNo)
+        //событие для нового значения счетчика может не существовать
+        val oldSeqNoForGauge: Long = state.accounts(customerId).gauges.getOrElse(gaugeId, -1)
+        if (newSeqNo > oldSeqNoForGauge) {
+          val event = Event.Withdrawal(customerId, gaugeId, consumed, newSeqNo)
           Effect
             .persist(event)
             .thenRun { _: State =>
@@ -193,7 +195,7 @@ object AccountRegistryRoot {
   def handleEvent(state: State, event: Event)(implicit ctx: ActorContext[Command]): State =
     event match {
       case Event.Added(customerId) =>
-        state.copy(accounts = state.accounts + (customerId -> Account(0, 0, -1)))
+        state.copy(accounts = state.accounts + (customerId -> Account(0, 0, Map.empty[UUID, Long])))
 
       case Event.Dropped(customerId) =>
         state.copy(accounts = state.accounts - customerId)
@@ -201,12 +203,12 @@ object AccountRegistryRoot {
       case Event.NewTariff(newTariff) =>
         state.copy(tariff = newTariff)
 
-      case Event.Withdrawal(customerId, consumed, seqNo) =>
+      case Event.Withdrawal(customerId, gaugeId, consumed, newSeqNo) =>
         val oldAccount: Account = state.accounts(customerId)
         val newAccount: Account = oldAccount.copy(
           consumed = oldAccount.consumed + consumed,
-          balance = oldAccount.balance - (state.tariff * consumed),
-          seqNo = seqNo
+          balance  = oldAccount.balance - (state.tariff * consumed),
+          gauges   = oldAccount.gauges + (gaugeId -> newSeqNo)
         )
         state.copy(accounts = state.accounts + (customerId -> newAccount))
 
