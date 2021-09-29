@@ -40,6 +40,7 @@ object Boot {
         tariffRegistryActor      <- system.ask(Command.GetTariffRegistry)
         gaugeRegistryRootActor   <- system.ask(Command.GetGaugeRegistryRoot)
         accountRegistryRootActor <- system.ask(Command.GetAccountRegistryRoot)
+        _                        <- system.ask(Command.GetAccountStats)
 
         customersRoutes: CustomersRoutes = new CustomersRoutes(customersRegistryActor)(system)
         tariffRoutes  = new TariffRoutes(tariffRegistryActor)

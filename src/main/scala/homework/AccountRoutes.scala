@@ -39,10 +39,10 @@ class AccountRoutes(registry: ActorRef[AccountRegistryRoot.Command])(implicit va
       }
     }
 
-  def deposit(customerId: UUID, amount: Int): Future[Event.Deposited] =
+  def deposit(customerId: UUID, amount: Int): Future[Event.AccountMovement] =
     registry.askWithStatus(AccountRegistryRoot.Command.Deposit(customerId, amount, _))
 
-  def getState(customerId: UUID): Future[AccountState] =
+  def getState(customerId: UUID): Future[Event.AccountMovement] =
     registry.askWithStatus(AccountRegistryRoot.Command.GetAccountState(customerId, _))
 
 }

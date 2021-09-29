@@ -10,7 +10,7 @@ import java.util.UUID
 
 object GaugeRegistry {
 
-  val name: String = "GaugeRegistry"
+  val name: String = "Gauge"
 
   val tagGaugeUpdated: String = "gaugeUpdated"
   val tagGaugeDropped: String = "gaugeDropped"
