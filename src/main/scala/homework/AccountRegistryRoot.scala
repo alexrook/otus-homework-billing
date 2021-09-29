@@ -11,12 +11,21 @@ import akka.util.Timeout
 
 import java.util.UUID
 
-final case class Account(balance:         Int, consumed: Int, gauges: Map[UUID, Long])
-final case class AccountState(customerId: UUID, account: Account)
-
 object AccountRegistryRoot {
 
   val name = "AccountRegistryRoot"
+  type Money = Int
+
+  final case class Account(balance: Money, consumed: Int, moneyMove: Money, gauges: Map[UUID, Long], actionId: Long) {
+    def withIncActionId: Account = this.copy(actionId = actionId + 1L)
+  }
+
+  object Account {
+
+    def empty: Account =
+      Account(balance = 0, consumed = 0, moneyMove = 0, gauges = Map.empty[UUID, Long], actionId = 0L)
+
+  }
 
   sealed trait Command
 
@@ -24,31 +33,29 @@ object AccountRegistryRoot {
 
     final case class AddAccount(customerId:  UUID) extends Command
     final case class DropAccount(customerId: UUID) extends Command
-    final case class SetTariff(amount:       Int) extends Command
+    final case class SetTariff(amount:       Money) extends Command
     final case class Withdraw(customerId:    UUID, gaugeId: UUID, consumed: Int, seqNo: Long) extends Command
-
-    final case class Deposit(customerId: UUID, amount: Int, replyTo: ActorRef[StatusReply[Event.Deposited]])
+    final case class Deposit(customerId:     UUID, amount: Money, replyTo: ActorRef[StatusReply[Event.AccountMovement]])
         extends Command
-
-    final case class GetAccountState(customerId: UUID, replyTo: ActorRef[StatusReply[AccountState]]) extends Command
+    final case class GetAccountState(customerId: UUID, replyTo: ActorRef[StatusReply[Event.AccountMovement]])
+        extends Command
 
   }
 
   sealed trait Event
 
   object Event {
-    final case class Added(customerId:      UUID) extends Event
-    final case class Dropped(customerId:    UUID) extends Event
-    final case class NewTariff(amount:      Int) extends Event
-    final case class Withdrawal(customerId: UUID, gaugeId: UUID, consumed: Int, seqNo: Long) extends Event
-    final case class Deposited(customerId:  UUID, amount: Int) extends Event
-
+    final case class Added(customerId:           UUID) extends Event
+    final case class Dropped(customerId:         UUID) extends Event
+    final case class NewTariff(amount:           Int) extends Event
+    final case class AccountMovement(customerId: UUID, account: Account) extends Event
   }
 
   final case class State(accounts: Map[UUID, Account], tariff: Int)
 
-  def apply(pId:                                                          String, customersPID: String, tariffPID: String)(implicit
-                                                                  system: ActorSystem[_]): Behavior[Command] = {
+  def apply(pId:     String, customersPID: String, tariffPID: String)(
+    implicit system: ActorSystem[_]
+  ): Behavior[Command] = {
 
     val persistenceId: PersistenceId = PersistenceId.ofUniqueId(pId)
 
@@ -147,8 +154,20 @@ object AccountRegistryRoot {
         ctx.log.info(s"account[{}] withdraw command", customerId)
         //событие для нового значения счетчика может не существовать
         val oldSeqNoForGauge: Long = state.accounts(customerId).gauges.getOrElse(gaugeId, -1)
+
         if (newSeqNo > oldSeqNoForGauge) {
-          val event = Event.Withdrawal(customerId, gaugeId, consumed, newSeqNo)
+          val moneyMove:  Money   = state.tariff * consumed
+          val oldAccount: Account = state.accounts(customerId)
+          val newAccount: Account = oldAccount
+            .copy(
+              consumed  = oldAccount.consumed + consumed,
+              balance   = oldAccount.balance - moneyMove,
+              moneyMove = moneyMove,
+              gauges    = oldAccount.gauges + (gaugeId -> newSeqNo),
+            )
+            .withIncActionId
+
+          val event = Event.AccountMovement(customerId, newAccount)
           Effect
             .persist(event)
             .thenRun { _: State =>
@@ -166,7 +185,14 @@ object AccountRegistryRoot {
 
       case cmd @ Command.Deposit(customerId, amount, replyTo) if state.accounts.contains(customerId) =>
         ctx.log.info(s"account {} command", cmd)
-        val event = Event.Deposited(customerId, amount)
+        val moneyMove: Money = amount
+
+        val oldAccount: Account = state.accounts(customerId)
+        val newAccount: Account = oldAccount
+          .copy(balance = oldAccount.balance + moneyMove, moneyMove = moneyMove)
+          .withIncActionId
+
+        val event = Event.AccountMovement(customerId, newAccount)
         Effect
           .persist(event)
           .thenRun { _: State =>
@@ -183,7 +209,7 @@ object AccountRegistryRoot {
       case Command.GetAccountState(customerId, replyTo) if state.accounts.contains(customerId) =>
         ctx.log.debug(s"get account[{}] state command", customerId)
         Effect.reply(replyTo) {
-          StatusReply.success(AccountState(customerId, state.accounts(customerId)))
+          StatusReply.success(Event.AccountMovement(customerId, state.accounts(customerId)))
         }
 
       case Command.GetAccountState(customerId, replyTo) =>
@@ -195,7 +221,7 @@ object AccountRegistryRoot {
   def handleEvent(state: State, event: Event)(implicit ctx: ActorContext[Command]): State =
     event match {
       case Event.Added(customerId) =>
-        state.copy(accounts = state.accounts + (customerId -> Account(0, 0, Map.empty[UUID, Long])))
+        state.copy(accounts = state.accounts + (customerId -> Account.empty))
 
       case Event.Dropped(customerId) =>
         state.copy(accounts = state.accounts - customerId)
@@ -203,19 +229,8 @@ object AccountRegistryRoot {
       case Event.NewTariff(newTariff) =>
         state.copy(tariff = newTariff)
 
-      case Event.Withdrawal(customerId, gaugeId, consumed, newSeqNo) =>
-        val oldAccount: Account = state.accounts(customerId)
-        val newAccount: Account = oldAccount.copy(
-          consumed = oldAccount.consumed + consumed,
-          balance  = oldAccount.balance - (state.tariff * consumed),
-          gauges   = oldAccount.gauges + (gaugeId -> newSeqNo)
-        )
-        state.copy(accounts = state.accounts + (customerId -> newAccount))
-
-      case Event.Deposited(customerId, amount) =>
-        val oldAccount = state.accounts(customerId)
-        val newAccount = oldAccount.copy(balance = oldAccount.balance + amount)
-        state.copy(accounts = state.accounts + (customerId -> newAccount))
+      case ev@Event.AccountMovement(customerId,account) =>
+        state.copy(accounts = state.accounts + (customerId -> account))
 
     }
 
