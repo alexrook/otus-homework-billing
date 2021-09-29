@@ -237,7 +237,7 @@ object GaugeRegistryRoot {
         ctx.log.debug("Event {} received", e)
 
         val gaugeRegistry: ActorRef[GaugeRegistry.Command] = ctx.spawn(
-          behavior = GaugeRegistry(customerId, gaugeId.toString, "", gaugeId, gauge),
+          behavior = GaugeRegistry(customerId, gaugeId.toString, gaugeId, gauge),
           name     = s"${GaugeRegistry.name}-$gaugeId"
         )
 

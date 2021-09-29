@@ -36,7 +36,7 @@ object GaugeRegistry {
     */
   final case class State(consumed: Int, currentValue: Int)
 
-  def apply(customerId: UUID, pId: String, tariffPId: String, gaugeId: UUID, gauge: Gauge): Behavior[Command] = {
+  def apply(customerId: UUID, pId: String, gaugeId: UUID, gauge: Gauge): Behavior[Command] = {
 
     implicit val cId: UUID = customerId
 
