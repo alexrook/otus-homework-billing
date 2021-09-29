@@ -162,7 +162,7 @@ object AccountRegistryRoot {
             .copy(
               consumed  = oldAccount.consumed + consumed,
               balance   = oldAccount.balance - moneyMove,
-              moneyMove = moneyMove,
+              moneyMove = -moneyMove, //отрицательное движение по счету
               gauges    = oldAccount.gauges + (gaugeId -> newSeqNo),
             )
             .withIncActionId
@@ -229,7 +229,7 @@ object AccountRegistryRoot {
       case Event.NewTariff(newTariff) =>
         state.copy(tariff = newTariff)
 
-      case ev@Event.AccountMovement(customerId,account) =>
+      case ev @ Event.AccountMovement(customerId, account) =>
         state.copy(accounts = state.accounts + (customerId -> account))
 
     }
