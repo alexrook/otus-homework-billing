@@ -67,7 +67,7 @@ object AccountStats {
     Behaviors.setup { implicit ctx =>
       ctx.log.debug("Actor created")
       readJournal
-        .eventsByPersistenceId(accountRegistryRootPID, 0, Long.MaxValue)
+        .eventsByPersistenceId(accountRegistryRootPID, 0, Long.MaxValue) //TODO: add offset
         .collect {
           case EventEnvelope(_, _, _, AccountRegistryRoot.Event.AccountMovement(customerId, account)) =>
             Command.AddAccountStat(
